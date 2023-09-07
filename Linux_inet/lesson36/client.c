@@ -1,5 +1,5 @@
 /*
-select IO多路复用:
+select IO多路复用: epoll使用lt模式，默认模式
 select() 是一种传统的I/O多路复用方法，它通过内核监视多个文件描述符的可读、可写和异常状态来通知应用程序哪些I/O操作可以安全执行。
 然而，select() 有一些限制，如文件描述符数量的限制和性能问题，因此在较大规模的应用程序中不太常用。
 */
@@ -34,7 +34,10 @@ int main() {
     int num = 0;
     while(1) {
         char sendBuf[1024] = {0};
-        sprintf(sendBuf, "send data %d", num++);//回射模式
+
+        // sprintf(sendBuf, "send data %d", num++);//回射模式
+
+        fgets(sendBuf, sizeof(sendBuf),stdin);
         write(fd, sendBuf, strlen(sendBuf) + 1);
 
         // 接收
@@ -49,7 +52,7 @@ int main() {
             break;
         }
         // sleep(1); //防止客户端发送太快
-        usleep(1000);
+        // usleep(1000);
     }
 
     close(fd);

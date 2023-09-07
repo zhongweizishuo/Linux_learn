@@ -1,5 +1,5 @@
 /*
-使用epoll 实现IO多路复用
+使用epoll 实现IO多路复用;epoll使用默认lt模式
 */
 #include <stdio.h>
 #include <arpa/inet.h>
@@ -67,8 +67,8 @@ int main() {
                     使用按位与运算符 & 来检查 epevs[i].events 是否包含 EPOLLOUT 标志。如果包含，条件成立，就会执行 continue 语句。
                 }   
                 // 有数据到达，需要通信
-
-                char buf[1024] = {0};
+                // char buf[1024] = {0};
+                char buf[5] = {0};
                 int len = read(curfd, buf, sizeof(buf));
                 if(len == -1) {
                     perror("read");
