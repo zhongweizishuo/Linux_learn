@@ -117,7 +117,7 @@ void* threadpool< T >::worker( void* arg )
 template< typename T >
 void threadpool< T >::run() {
 
-    while (!m_stop) {
+    while (!m_stop) { //直到m_stop==false ,停止运行
         m_queuestat.wait();
         m_queuelocker.lock();
         if ( m_workqueue.empty() ) {
