@@ -1,10 +1,10 @@
 #ifndef THREADPOOL_H
-#define THREADPOLL_H
+#define THREADPOOL_H
 
 #include <pthread.h>
 #include <list>
 #include "locker.h"
-#include <cstdio>
+#include <cstdio> //cpp下面的stdio
 
 // 线程池类，定义为template，是为了代码复用
 template <typename T>
@@ -49,8 +49,8 @@ template <typename T>
 threadpool<T>::threadpool(int thread_number, int max_requests) : // 使用：进行初始化参数
 																 m_thread_number(thread_number),
 																 m_max_requests(max_requests),
-																 m_stop(flase),
-																 m_thread(NULL)
+																 m_stop(false),
+																 m_threads(NULL)
 {
 
 	// 传入的两个数据检测，不合适就抛出异常
@@ -66,16 +66,16 @@ threadpool<T>::threadpool(int thread_number, int max_requests) : // 使用：进
 		throw std::exception();
 	}
 	// 创建thread_number个线程，并设置线程分离
-	for (int i = 0; i < thread_number, i++)
+	for (int i = 0; i < thread_number; i++)
 	{
 		printf("create the %dth thread\n",i);
 		if (pthread_create(m_threads+i, NULL, worker, this) !=0){
 			//创建线程失败的话，释放线程内存，并throw错误；
-			delete [] m_thread;
+			delete [] m_threads;
 			throw std::exception();
 		}
 
-		if(pthread_detach(m_thread[i])){
+		if(pthread_detach(m_threads[i])){
 			delete [] m_threads;
 			throw std::exception();
 		}
