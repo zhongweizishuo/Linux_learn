@@ -82,6 +82,7 @@ void http_conn::init(int sockfd, const sockaddr_in& addr){
 
 void http_conn::init()
 {
+    // 成员属性的初始化，需要的时候再初始化
     m_check_state = CHECK_STATE_REQUESTLINE;    // 初始状态为检查请求行
     m_linger = false;       // 默认不保持链接  Connection : keep-alive保持连接
 
@@ -94,6 +95,7 @@ void http_conn::init()
     m_checked_idx = 0;
     m_read_idx = 0;
     m_write_idx = 0;
+    //buf 清空
     bzero(m_read_buf, READ_BUFFER_SIZE);
     bzero(m_write_buf, READ_BUFFER_SIZE);
     bzero(m_real_file, FILENAME_LEN);
@@ -101,44 +103,48 @@ void http_conn::init()
 
 // 循环读取客户数据，直到无数据可读或者对方关闭连接
 bool http_conn::read() {
-    if( m_read_idx >= READ_BUFFER_SIZE ) {
+    if( m_read_idx >= READ_BUFFER_SIZE ) {// 数据指针大于最大buffer空间
         return false;
     }
+    // 读取到的字节
     int bytes_read = 0;
     while(true) {
-        // 从m_read_buf + m_read_idx索引出开始保存数据，大小是READ_BUFFER_SIZE - m_read_idx
+        // 从m_read_buf + m_read_idx索引（数组起始位置+已读位置为偏移量）出开始保存数据，\
+        大小是READ_BUFFER_SIZE - m_read_idx
         bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, 
         READ_BUFFER_SIZE - m_read_idx, 0 );
         if (bytes_read == -1) {
             if( errno == EAGAIN || errno == EWOULDBLOCK ) {
-                // 没有数据
+                // 非阻塞读取数据，发现没有数据报错处理
                 break;
             }
             return false;   
         } else if (bytes_read == 0) {   // 对方关闭连接
             return false;
         }
-        m_read_idx += bytes_read;
+        m_read_idx += bytes_read;//已读数据，更新索引位置
     }
+    printf("读取到了数据：%s\n",m_read_buf);
     return true;
 }
 
-// 解析一行，判断依据\r\n
+// parse line : 解析一行，判断依据\r\n
 http_conn::LINE_STATUS http_conn::parse_line() {
     char temp;
     for ( ; m_checked_idx < m_read_idx; ++m_checked_idx ) {
         temp = m_read_buf[ m_checked_idx ];
         if ( temp == '\r' ) {
             if ( ( m_checked_idx + 1 ) == m_read_idx ) {
-                return LINE_OPEN;
+                return LINE_OPEN;//3.行数据尚且不完整
             } else if ( m_read_buf[ m_checked_idx + 1 ] == '\n' ) {
                 m_read_buf[ m_checked_idx++ ] = '\0';
                 m_read_buf[ m_checked_idx++ ] = '\0';
-                return LINE_OK;
+                return LINE_OK;// 1.读取到一个完整的行
             }
-            return LINE_BAD;
+            return LINE_BAD;// 2.行出错 
         } else if( temp == '\n' )  {
             if( ( m_checked_idx > 1) && ( m_read_buf[ m_checked_idx - 1 ] == '\r' ) ) {
+                // 同时存在字符串\r\n
                 m_read_buf[ m_checked_idx-1 ] = '\0';
                 m_read_buf[ m_checked_idx++ ] = '\0';
                 return LINE_OK;
@@ -151,7 +157,9 @@ http_conn::LINE_STATUS http_conn::parse_line() {
 
 // 解析HTTP请求行，获得请求方法，目标URL,以及HTTP版本号
 http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
-    // GET /index.html HTTP/1.1
+    // 如何解析这行代码？GET /index.html HTTP/1.1 \
+        可以使用正则表达式\
+        也可以使用传统的字符串处理方式，此方法具体如下：
     m_url = strpbrk(text, " \t"); // 判断第二个参数中的字符哪个在text中最先出现
     if (! m_url) { 
         return BAD_REQUEST;
@@ -170,6 +178,8 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     if (!m_version) {
         return BAD_REQUEST;
     }
+
+    // /index.html\0HTTP/1.1
     *m_version++ = '\0';
     if (strcasecmp( m_version, "HTTP/1.1") != 0 ) {
         return BAD_REQUEST;
@@ -178,14 +188,14 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
      * http://192.168.110.129:10000/index.html
     */
     if (strncasecmp(m_url, "http://", 7) == 0 ) {   
-        m_url += 7;
+        m_url += 7; // 此时的m_url是192.168.110.129:10000/index.html
         // 在参数 str 所指向的字符串中搜索第一次出现字符 c（一个无符号字符）的位置。
         m_url = strchr( m_url, '/' );
     }
     if ( !m_url || m_url[0] != '/' ) {
         return BAD_REQUEST;
     }
-    m_check_state = CHECK_STATE_HEADER; // 检查状态变成检查头
+    m_check_state = CHECK_STATE_HEADER; // 检查请求行完毕，主状态机：转换状态变成检查头
     return NO_REQUEST;
 }
 
@@ -235,6 +245,7 @@ http_conn::HTTP_CODE http_conn::parse_content( char* text ) {
 }
 
 // 主状态机，解析请求
+// 返回值是HTTP_CODE
 http_conn::HTTP_CODE http_conn::process_read() {
     LINE_STATUS line_status = LINE_OK;
     HTTP_CODE ret = NO_REQUEST;
@@ -247,14 +258,14 @@ http_conn::HTTP_CODE http_conn::process_read() {
         printf( "got 1 http line: %s\n", text );
 
         switch ( m_check_state ) {
-            case CHECK_STATE_REQUESTLINE: {
+            case CHECK_STATE_REQUESTLINE: {// 解析状态请求行
                 ret = parse_request_line( text );
                 if ( ret == BAD_REQUEST ) {
                     return BAD_REQUEST;
                 }
-                break;
+                break;//语法错误，直接退出
             }
-            case CHECK_STATE_HEADER: {
+            case CHECK_STATE_HEADER: {// 解析请求头
                 ret = parse_headers( text );
                 if ( ret == BAD_REQUEST ) {
                     return BAD_REQUEST;
@@ -266,9 +277,9 @@ http_conn::HTTP_CODE http_conn::process_read() {
             case CHECK_STATE_CONTENT: {
                 ret = parse_content( text );
                 if ( ret == GET_REQUEST ) {
-                    return do_request();
+                    return do_request();//do_request()解析具体信息
                 }
-                line_status = LINE_OPEN;
+                line_status = LINE_OPEN;// 行数据尚且不完整
                 break;
             }
             default: {
@@ -282,7 +293,7 @@ http_conn::HTTP_CODE http_conn::process_read() {
 // 当得到一个完整、正确的HTTP请求时，我们就分析目标文件的属性，
 // 如果目标文件存在、对所有用户可读，且不是目录，则使用mmap将其
 // 映射到内存地址m_file_address处，并告诉调用者获取文件成功
-http_conn::HTTP_CODE http_conn::do_request()
+http_conn::HTTP_CODE http_conn::do_request()// 返回值是HTTP_CODE
 {
     // "/home/nowcoder/webserver/resources"
     strcpy( m_real_file, doc_root );

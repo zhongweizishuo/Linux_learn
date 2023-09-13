@@ -28,11 +28,11 @@ public:
     static const int READ_BUFFER_SIZE = 2048;   // 读缓冲区的大小
     static const int WRITE_BUFFER_SIZE = 1024;  // 写缓冲区的大小
     
-    // HTTP请求方法，这里只支持GET
+    // HTTP请求方法，这里只支持GET；枚举。从0开始
     enum METHOD {GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT};
     
     /*
-        解析客户端请求时，主状态机的状态
+        解析客户端请求报文（三个部分）时，主状态机的状态
         CHECK_STATE_REQUESTLINE:当前正在分析请求行
         CHECK_STATE_HEADER:当前正在分析头部字段
         CHECK_STATE_CONTENT:当前正在解析请求体
@@ -75,7 +75,7 @@ private:
     HTTP_CODE parse_headers( char* text );
     HTTP_CODE parse_content( char* text );
     HTTP_CODE do_request();
-    char* get_line() { return m_read_buf + m_start_line; }
+    char* get_line() { return m_read_buf + m_start_line; }//内联函数
     LINE_STATUS parse_line();
 
     // 这一组函数被process_write调用以填充HTTP应答。
@@ -94,6 +94,7 @@ public:
     static int m_user_count;    // 统计用户的数量
 
 private:
+    // 定义成员属性，需要的时候再定义
     int m_sockfd;           // 该HTTP连接的socket和对方的socket地址
     sockaddr_in m_address;
     
