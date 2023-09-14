@@ -201,7 +201,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
 
 // 解析HTTP请求的一个头部信息
 http_conn::HTTP_CODE http_conn::parse_headers(char* text) {   
-    // 遇到空行，表示头部字段解析完毕
+    // 遇到解析一个空行，表示头部字段解析完毕
     if( text[0] == '\0' ) {
         // 如果HTTP请求有消息体，则还需要读取m_content_length字节的消息体，
         // 状态机转移到CHECK_STATE_CONTENT状态
@@ -229,12 +229,13 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
         text += strspn( text, " \t" );
         m_host = text;
     } else {
-        printf( "oop! unknow header %s\n", text );
+        // 未知的请求头
+        printf( "unknow header %s\n", text );
     }
     return NO_REQUEST;
 }
 
-// 我们没有真正解析HTTP请求的消息体，只是判断它是否被完整的读入了
+// parse content 解析请求体：我们没有真正解析HTTP请求的消息体，只是判断它是否被完整的读入了
 http_conn::HTTP_CODE http_conn::parse_content( char* text ) {
     if ( m_read_idx >= ( m_content_length + m_checked_idx ) )
     {
@@ -295,10 +296,12 @@ http_conn::HTTP_CODE http_conn::process_read() {
 // 映射到内存地址m_file_address处，并告诉调用者获取文件成功
 http_conn::HTTP_CODE http_conn::do_request()// 返回值是HTTP_CODE
 {
-    // "/home/nowcoder/webserver/resources"
+    //目录 "/home/nowcoder/webserver/resources"
     strcpy( m_real_file, doc_root );
     int len = strlen( doc_root );
-    strncpy( m_real_file + len, m_url, FILENAME_LEN - len - 1 );
+    strncpy( m_real_file + len, m_url, FILENAME_LEN - len - 1 );// 拼接文件地址
+    printf("m_real_file = %s\n",m_real_file);
+
     // 获取m_real_file文件的相关的状态信息，-1失败，0成功
     if ( stat( m_real_file, &m_file_stat ) < 0 ) {
         return NO_RESOURCE;
@@ -316,13 +319,14 @@ http_conn::HTTP_CODE http_conn::do_request()// 返回值是HTTP_CODE
 
     // 以只读方式打开文件
     int fd = open( m_real_file, O_RDONLY );
-    // 创建内存映射
+    
+    // 创建内存映射;将/home/nowcoder/webserver/resources下的网页数据映射到内存上
     m_file_address = ( char* )mmap( 0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0 );
     close( fd );
     return FILE_REQUEST;
 }
 
-// 对内存映射区执行munmap操作
+// 内存映射之后进行释放操作，对内存映射区执行munmap操作
 void http_conn::unmap() {
     if( m_file_address )
     {
@@ -346,7 +350,7 @@ bool http_conn::write()
     }
 
     while(1) {
-        // 分散写
+        // writev分散写,无需连续的内存空间，写在内存不同的地方
         temp = writev(m_sockfd, m_iv, m_iv_count);
         if ( temp <= -1 ) {
             // 如果TCP写缓冲没有空间，则等待下一轮EPOLLOUT事件，虽然在此期间，
@@ -375,7 +379,7 @@ bool http_conn::write()
     }
 }
 
-// 往写缓冲中写入待发送的数据
+// 往写缓冲区 m_write_buf 中写入待发送的数据
 bool http_conn::add_response( const char* format, ... ) {
     if( m_write_idx >= WRITE_BUFFER_SIZE ) {
         return false;
@@ -425,7 +429,7 @@ bool http_conn::add_content_type() {
     return add_response("Content-Type:%s\r\n", "text/html");
 }
 
-// 根据服务器处理HTTP请求的结果，决定返回给客户端的内容
+// 根据服务器处理HTTP请求的结果，使用switch_case来决定返回给客户端的内容
 bool http_conn::process_write(HTTP_CODE ret) {
     switch (ret)
     {
@@ -444,9 +448,10 @@ bool http_conn::process_write(HTTP_CODE ret) {
             }
             break;
         case NO_RESOURCE:
-            add_status_line( 404, error_404_title );
-            add_headers( strlen( error_404_form ) );
-            if ( ! add_content( error_404_form ) ) {
+            // 响应报文的格式都是类似的，分为一下三部分
+            add_status_line( 404, error_404_title );// 添加响应状态行
+            add_headers( strlen( error_404_form ) );// 添加响应头
+            if ( ! add_content( error_404_form ) ) {// 添加响应内容
                 return false;
             }
             break;
@@ -487,6 +492,7 @@ void http_conn::process() {
     
     // 生成响应
     bool write_ret = process_write( read_ret );
+    // 关闭并重新监听响应
     if ( !write_ret ) {
         close_conn();
     }
